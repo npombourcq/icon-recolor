@@ -1,0 +1,19 @@
+apply plugin:'java'
+apply plugin:'application'
+apply plugin:'eclipse'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies{
+    compile 'com.google.guava:guava:14.0.1'
+}
+
+mainClassName = 'net.npbq.icontools.recolor.IconRecolor'
+
+jar {
+    manifest {
+        attributes 'Main-Class': mainClassName
+    }
+}
