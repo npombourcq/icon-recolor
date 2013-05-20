@@ -3,47 +3,72 @@ package net.npbq.icontools.recolor;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 
-import com.google.common.primitives.UnsignedInts;
+import org.apache.commons.cli.BasicParser;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 
 public class IconRecolor {
 
-    private static final int RGB_MASK = 0x00ffffff;
-    private static final int ALPHA_MASK = 0xff000000;
+    @SuppressWarnings("static-access")
+    public static void main(String[] args) throws IOException, ParseException {
+        CommandLineParser parser = new BasicParser();
 
-    public static void main(String[] args) throws IOException {
-        if (args.length < 3) {
-            System.out.println("Usage: ImageRecolor sourceColor targetColor file+");
-            return;
+        Options options = new Options();
+
+        options.addOption(OptionBuilder.withLongOpt("fixTransparency").withDescription("Convert white to transparent")
+                .create());
+        options.addOption(OptionBuilder.withLongOpt("recolor").withDescription("Convert srcColor to targetColor")
+                .create());
+        options.addOption(OptionBuilder.withLongOpt("from").withDescription("Source color").hasArg()
+                .withArgName("#srcColor").create());
+        options.addOption(OptionBuilder.withLongOpt("to").withDescription("Target color").hasArg()
+                .withArgName("#targetColor").create());
+
+        CommandLine cmd = parser.parse(options, args);
+
+        int srcColor = Color.parseColor(cmd.getOptionValue("from"));
+
+        List<ColorFunction> functions = new ArrayList<>();
+        if (cmd.hasOption("fixTransparency")) {
+            System.out.println("Will be fixing transparency");
+            functions.add(new FixTransparency(srcColor));
         }
 
-        int srcColor = UnsignedInts.decode(args[0]);
-        int targetColor = UnsignedInts.decode(args[1]);
+        if (cmd.hasOption("recolor")) {
+            System.out.println("Will be recoloring");
+            int targetColor = Color.parseColor(cmd.getOptionValue("to"));
+            functions.add(new Recolor(srcColor, targetColor));
+        }
 
-        for (int i = 2; i < args.length; i++) {
-            File imgPath = new File(args[i]);
-            recolor(imgPath, srcColor, imgPath, targetColor);
+        if (functions.isEmpty())
+            throw new IllegalArgumentException("No function specified");
+
+        for (String imgPath : cmd.getArgs()) {
+            File img = new File(imgPath);
+            process(img, img, functions);
         }
     }
 
-    public static void recolor(File srcPath, int srcColor, File targetPath, int targetColor) throws IOException {
-        int srcAlpha = (srcColor & ALPHA_MASK) >>> 24;
-        int targetAlpha = (targetColor & ALPHA_MASK) >>> 24;
+    public static void process(File srcPath, File targetPath, Iterable<ColorFunction> functions) throws IOException {
+        System.out.printf("Processing %s%n", srcPath.getAbsolutePath());
 
         BufferedImage img = ImageIO.read(srcPath);
         int h = img.getHeight();
         int w = img.getWidth();
         for (int x = 0; x < w; x++) {
             for (int y = 0; y < h; y++) {
-                int c = img.getRGB(x, y);
-                if ((c & RGB_MASK) == (srcColor & RGB_MASK)) {
-                    int alpha = (c & ALPHA_MASK) >>> 24;
-                    alpha = (alpha * targetAlpha / srcAlpha);
-                    c = (targetColor & RGB_MASK) | (alpha << 24);
-                    img.setRGB(x, y, c);
-                }
+                int color = img.getRGB(x, y);
+                for (ColorFunction function : functions)
+                    color = function.transform(color);
+                img.setRGB(x, y, color);
             }
         }
 
